@@ -222,6 +222,11 @@ where
         IterOverlapping { aabb, stack }
     }
 
+    /// Iterator for all elements.
+    pub fn iter(&self) -> Iter<T, U, V> {
+        Iter { stack: self.root.iter().collect() }
+    }
+
     /// Do any of the AABBs in this tree overlap with the give AABB?
     #[inline]
     pub fn any_overlap(&self, aabb: Aabb<T, U>) -> bool {
@@ -383,9 +388,14 @@ pub struct IterOverlapping<'a, T, U, V> {
     stack: Vec<&'a AabbTreeNode<T, U, V>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Iter<'a, T, U, V> {
+    stack: Vec<&'a AabbTreeNode<T, U, V>>,
+}
+
 impl<'a, T, U, V> Iterator for IterOverlapping<'a, T, U, V>
-where
-    T: Copy + Num + PartialOrd,
+    where
+        T: Copy + Num + PartialOrd,
 {
     type Item = (&'a Aabb<T, U>, &'a V);
 
@@ -404,6 +414,28 @@ where
                     if self.aabb.intersects(b.children.1.aabb()) {
                         self.stack.push(&b.children.1);
                     }
+                }
+            }
+        }
+    }
+}
+
+impl<'a, T, U, V> Iterator for Iter<'a, T, U, V>
+    where
+        T: Copy + Num + PartialOrd,
+{
+    type Item = (&'a Aabb<T, U>, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.stack.pop() {
+                None => return None,
+                Some(AabbTreeNode::Leaf(l)) => {
+                    return Some((&l.aabb, &l.value));
+                }
+                Some(AabbTreeNode::Branch(b)) => {
+                    self.stack.push(&b.children.0);
+                    self.stack.push(&b.children.1);
                 }
             }
         }
