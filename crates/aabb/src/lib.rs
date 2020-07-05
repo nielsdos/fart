@@ -261,6 +261,36 @@ where
         }
     }
 
+    fn balance(mut self) -> AabbTreeBranch<T, U, V> {
+        let balance = self.children.0.height() - self.children.1.height();
+
+        if balance == 2 {
+            // Subtree is left-heavy.
+
+            if balance == -1 {
+                self.children.0 = match self.children.0 {
+                    AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_left()),
+                    x@_ => { x }
+                };
+            }
+
+            self.rotate_right()
+        } else if balance == -2 {
+            // Subtree is right-heavy.
+
+            if balance == 1 {
+                self.children.1 = match self.children.1 {
+                    AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_right()),
+                    x@_ => { x }
+                };
+            }
+
+            self.rotate_left()
+        } else {
+            self
+        }
+    }
+
     fn recalculate_height(&mut self) {
         self.height = 1 + cmp::max(self.children.0.height(), self.children.1.height());
     }
@@ -290,41 +320,6 @@ where
         match self {
             AabbTreeNode::Leaf(_) => 0,
             AabbTreeNode::Branch(b) => b.height,
-        }
-    }
-
-    fn balance(self) -> AabbTreeNode<T, U, V> {
-        match self {
-            AabbTreeNode::Leaf(_) => self,
-            AabbTreeNode::Branch(mut branch) => {
-                let balance = branch.children.0.height() - branch.children.1.height();
-
-                if balance == 2 {
-                    // Subtree is left-heavy.
-
-                    if balance == -1 {
-                        branch.children.0 = match branch.children.0 {
-                            AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_left()),
-                            x@_ => { x }
-                        };
-                    }
-
-                    AabbTreeNode::Branch(branch.rotate_right())
-                } else if balance == -2 {
-                    // Subtree is right-heavy.
-
-                    if balance == 1 {
-                        branch.children.1 = match branch.children.1 {
-                            AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_right()),
-                            x@_ => { x }
-                        };
-                    }
-
-                    AabbTreeNode::Branch(branch.rotate_left())
-                } else {
-                    AabbTreeNode::Branch(branch)
-                }
-            }
         }
     }
 
@@ -373,7 +368,7 @@ where
                         },
                     ),
                     height: new_height,
-                }).balance()
+                }.balance())
             }
         }
     }
