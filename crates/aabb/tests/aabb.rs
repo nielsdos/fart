@@ -149,13 +149,20 @@ fn contains() {
 #[test]
 fn tree() {
     let mut tree = AabbTree::new();
+    assert_eq!(tree.height(), -1);
 
     let alice_aabb = Aabb::new(p2(0.0, 0.0), p2(2.0, 2.0));
     tree.insert(alice_aabb.clone(), "Alice");
+    assert_eq!(tree.height(), 0);
     let bob_aabb = Aabb::new(p2(2.0, 2.0), p2(4.0, 4.0));
     tree.insert(bob_aabb.clone(), "Bob");
+    assert_eq!(tree.height(), 1);
     let zed_aabb = Aabb::new(p2(10.0, 10.0), p2(20.0, 20.0));
     tree.insert(zed_aabb.clone(), "Zed");
+    assert_eq!(tree.height(), 2);
+    let zed2_aabb = Aabb::new(p2(1000.0, 1000.0), p2(2000.0, 2000.0));
+    tree.insert(zed2_aabb.clone(), "Zed2");
+    assert_eq!(tree.height(), 2);
 
     for (target, expected) in vec![
         (

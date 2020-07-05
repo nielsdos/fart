@@ -7,7 +7,7 @@
 use euclid::Point2D;
 use num_traits::Num;
 use partial_min_max::{max as partial_max, min as partial_min};
-use std::fmt;
+use std::{fmt, cmp};
 
 /// An axis-aligned bounding box.
 ///
@@ -152,6 +152,7 @@ enum AabbTreeNode<T, U, V> {
 struct AabbTreeBranch<T, U, V> {
     aabb: Aabb<T, U>,
     children: Box<(AabbTreeNode<T, U, V>, AabbTreeNode<T, U, V>)>,
+    height: i16,
 }
 
 #[derive(Debug)]
@@ -178,6 +179,15 @@ where
         } else {
             AabbTreeNode::Leaf(leaf)
         });
+    }
+
+    /// Gets the height of the tree.
+    pub fn height(&self) -> i16 {
+        match self.root {
+            None => -1,
+            Some(AabbTreeNode::Leaf(AabbTreeLeaf { .. })) => 0,
+            Some(AabbTreeNode::Branch(AabbTreeBranch { height, .. })) => height,
+        }
     }
 
     /// Iterate over each of the AABB keys and associated values that overlap
@@ -219,6 +229,52 @@ where
     }
 }
 
+impl<T, U, V> AabbTreeBranch<T, U, V>
+where
+    T: Copy + Num + PartialOrd,
+{
+    fn rotate_left(mut self) -> AabbTreeBranch<T, U, V> {
+        match *self.children {
+            (l, AabbTreeNode::Branch(mut b)) => {
+                self.children.0 = l;
+                self.children.1 = b.children.0;
+                self.recalculate_fields();
+                b.children.0 = AabbTreeNode::Branch(self);
+                b.recalculate_fields();
+                b
+            }
+            (_, AabbTreeNode::Leaf(_)) => unreachable!(),
+        }
+    }
+
+    fn rotate_right(mut self) -> AabbTreeBranch<T, U, V> {
+        match *self.children {
+            (AabbTreeNode::Branch(mut b), r) => {
+                self.children.1 = r;
+                self.children.0 = b.children.1;
+                self.recalculate_fields();
+                b.children.1 = AabbTreeNode::Branch(self);
+                b.recalculate_fields();
+                b
+            }
+            (AabbTreeNode::Leaf(_), _) => unreachable!(),
+        }
+    }
+
+    fn recalculate_height(&mut self) {
+        self.height = 1 + cmp::max(self.children.0.height(), self.children.1.height());
+    }
+
+    fn recalculate_aabb(&mut self) {
+        self.aabb = self.children.0.aabb().join(self.children.1.aabb());
+    }
+
+    fn recalculate_fields(&mut self) {
+        self.recalculate_height();
+        self.recalculate_aabb();
+    }
+}
+
 impl<T, U, V> AabbTreeNode<T, U, V>
 where
     T: Copy + Num + PartialOrd,
@@ -230,11 +286,54 @@ where
         }
     }
 
+    fn height(&self) -> i16 {
+        match self {
+            AabbTreeNode::Leaf(_) => 0,
+            AabbTreeNode::Branch(b) => b.height,
+        }
+    }
+
+    fn balance(self) -> AabbTreeNode<T, U, V> {
+        match self {
+            AabbTreeNode::Leaf(_) => self,
+            AabbTreeNode::Branch(mut branch) => {
+                let balance = branch.children.0.height() - branch.children.1.height();
+
+                if balance == 2 {
+                    // Subtree is left-heavy.
+
+                    if balance == -1 {
+                        branch.children.0 = match branch.children.0 {
+                            AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_left()),
+                            x@_ => { x }
+                        };
+                    }
+
+                    AabbTreeNode::Branch(branch.rotate_right())
+                } else if balance == -2 {
+                    // Subtree is right-heavy.
+
+                    if balance == 1 {
+                        branch.children.1 = match branch.children.1 {
+                            AabbTreeNode::Branch(b) => AabbTreeNode::Branch(b.rotate_right()),
+                            x@_ => { x }
+                        };
+                    }
+
+                    AabbTreeNode::Branch(branch.rotate_left())
+                } else {
+                    AabbTreeNode::Branch(branch)
+                }
+            }
+        }
+    }
+
     fn insert(self, leaf: AabbTreeLeaf<T, U, V>) -> AabbTreeNode<T, U, V> {
         match self {
             AabbTreeNode::Leaf(l) => AabbTreeNode::Branch(AabbTreeBranch {
                 aabb: l.aabb.join(&leaf.aabb),
                 children: Box::new((AabbTreeNode::Leaf(l), AabbTreeNode::Leaf(leaf))),
+                height: 1,
             }),
             AabbTreeNode::Branch(branch) => {
                 let combined_aabb = branch.aabb.join(&leaf.aabb);
@@ -260,6 +359,8 @@ where
                     }
                 };
 
+                let new_height = branch.height + 1;
+
                 AabbTreeNode::Branch(AabbTreeBranch {
                     aabb: combined_aabb,
                     children: Box::new(
@@ -271,7 +372,8 @@ where
                             (branch.children.0, branch.children.1.insert(leaf))
                         },
                     ),
-                })
+                    height: new_height,
+                }).balance()
             }
         }
     }
